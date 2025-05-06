@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import hamburger from './assets/hamburger.svg';
 
 function App() {
-  const [psshList, setPsshList] = useState([]);
+  const [pssh, setPssh] = useState('');
   const [selectedPssh, setSelectedPssh] = useState('');
   const [licenseList, setLicenseList] = useState([]);
   const [selectedLicense, setSelectedLicense] = useState('');
@@ -11,16 +11,15 @@ function App() {
   const [userSelectedLicense, setUserSelectedLicense] = useState(false);
   const [licenseRequestData, setLicenseRequestData] = useState(null);
   const [pyodide, setPyodide] = useState(null);
-  const [isPyodideLoaded, setIsPyodideLoaded] = useState(false); // New state for Pyodide loading
+  const [isPyodideLoaded, setIsPyodideLoaded] = useState(false);
 
   useEffect(() => {
     const loadPyodideAsync = async () => {
       try {
-        const py = await window.loadPyodide();  // Use global loadPyodide
+        const py = await window.loadPyodide();
         setPyodide(py);
-        setIsPyodideLoaded(true);  // Set to true when Pyodide is fully loaded
+        setIsPyodideLoaded(true);
 
-        // Load your wheels after Pyodide is initialized
         await py.loadPackage([
           chrome.runtime.getURL('python/packages/pyplayready-0.6.0-py3-none-any.whl'),
           chrome.runtime.getURL('python/packages/pywidevine-1.8.0-py3-none-any.whl'),
@@ -28,19 +27,18 @@ function App() {
         ]);
       } catch (error) {
         console.error('Error loading Pyodide or packages:', error);
-        setIsPyodideLoaded(false);  // Handle error and set as not loaded
+        setIsPyodideLoaded(false);
       }
     };
 
     loadPyodideAsync();
   }, []);
 
-  // Initial fetch from storage
   useEffect(() => {
     chrome.storage.local.get(['psshs', 'selectRules', 'licenseUrlsByTab', 'pageURL'], (data) => {
-      if (data.psshs) {
-        setPsshList(data.psshs);
-        setSelectedPssh(data.psshs[data.psshs.length - 1] || '');
+      if (data.psshs && data.psshs.length > 0) {
+        setPssh(data.psshs[0]);
+        setSelectedPssh(data.psshs[0]);
       }
 
       if (data.selectRules) {
@@ -56,8 +54,10 @@ function App() {
     chrome.storage.onChanged.addListener((changes) => {
       if (changes.psshs) {
         const list = changes.psshs.newValue;
-        setPsshList(list);
-        setSelectedPssh(list[list.length - 1] || '');
+        if (list && list.length > 0) {
+          setPssh(list[0]);
+          setSelectedPssh(list[0]);
+        }
       }
 
       if (changes.licenseUrlsByTab || changes.pageURL) {
@@ -81,19 +81,29 @@ function App() {
   }, [licenseList, rules, userSelectedLicense]);
 
   const autoSelectLicense = (licenseUrls, ruleSet) => {
+    let foundMatch = false;
+  
     for (const url of licenseUrls) {
       for (const rule of ruleSet) {
-        if (url.includes(rule.pattern)) {
+        // Remove the $$ from the pattern and check if the URL includes the pattern
+        const cleanPattern = rule.pattern.replace('$$', '');
+        
+        if (url.includes(cleanPattern)) {
           setSelectedLicense(url);
           setChallengeScheme(rule.scheme || 'default');
-          return;
+          foundMatch = true;
+          break;
         }
       }
+      if (foundMatch) break;
     }
-
-    setSelectedLicense(licenseUrls[0]);
-    setChallengeScheme('default');
+  
+    if (!foundMatch && licenseUrls.length > 0) {
+      setSelectedLicense(licenseUrls[0]);
+      setChallengeScheme('default');
+    }
   };
+  
 
   const handleDecrypt = async () => {
     if (!selectedLicense || !pyodide) {
@@ -117,20 +127,17 @@ function App() {
           };
 
           try {
-            // Load remote.json to get the cdrm_instance_fqdn value
             const fqdnResponse = await fetch(chrome.runtime.getURL('remote.json'));
             const fqdnData = await fqdnResponse.json();
             const cdrmInstanceFqdn = fqdnData.cdrm_instance_fqdn || '';
 
-            // 🧠 Set global variables for Python
             pyodide.globals.set('pssh', payload.pssh);
             pyodide.globals.set('license_url', payload.licenseUrl);
             pyodide.globals.set('license_body', payload.body);
             pyodide.globals.set('headers', payload.headers);
             pyodide.globals.set('scheme', payload.challengeScheme);
-            pyodide.globals.set('cdrm_instance_fqdn', cdrmInstanceFqdn); // Pass FQDN to Pyodide
+            pyodide.globals.set('cdrm_instance_fqdn', cdrmInstanceFqdn);
 
-            // Function to fetch a script with error handling
             const fetchScript = async (scriptPath) => {
               try {
                 const response = await fetch(chrome.runtime.getURL(scriptPath));
@@ -141,23 +148,19 @@ function App() {
                 return await response.text();
               } catch (error) {
                 console.error(`Error fetching script ${scriptPath}:`, error);
-                throw error; // Rethrow the error to handle it in the main function
+                throw error;
               }
             };
 
-            // 🐍 Run pre.py (initial script)
             const preScript = await fetchScript('python/pre.py');
             await pyodide.runPythonAsync(preScript);
 
-            // 🐍 Run the scheme-specific script
             const schemeScript = await fetchScript(`python/${challengeScheme}.py`);
             await pyodide.runPythonAsync(schemeScript);
 
-            // Get result from decrypt_data function in the scheme script
             const decryptFunction = pyodide.globals.get('decrypt_data');
             const decryptedData = decryptFunction(payload.headers, payload.body, payload.pssh, payload.challengeScheme);
 
-            // 🐍 Run post.py (finalization script)
             const postScript = await fetchScript('python/post.py');
             await pyodide.runPythonAsync(postScript);
 
@@ -175,7 +178,6 @@ function App() {
     );
   };
 
-  // Show a loading message until Pyodide is loaded
   if (!isPyodideLoaded) {
     return (
       <div className="w-full h-full flex justify-center items-center bg-gray-900 text-white">
@@ -192,66 +194,51 @@ function App() {
       </div>
 
       <div className="flex flex-col w-full overflow-y-auto grow p-4">
-        {/* PSSH Selector */}
         <label htmlFor="pssh" className="w-full text-2xl text-white font-bold">PSSH:</label>
         <select
           id="pssh"
-          className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2 overflow-x-hidden"
+          className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2 overflow-x-hidden shrink-0"
           value={selectedPssh}
-          onChange={(e) => setSelectedPssh(e.target.value)}
+          onChange={() => {}}
         >
-          {psshList.map((pssh, idx) => (
-            <option key={idx} value={pssh}>{pssh}</option>
-          ))}
+          <option value={pssh}>{pssh}</option>
         </select>
 
-        {/* License URL Selector */}
         <label htmlFor="license" className="w-full text-2xl text-white font-bold mt-4">License URL:</label>
         <select
           id="license"
-          className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2"
+          className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2 shrink-0"
           value={selectedLicense}
           onChange={(e) => {
-            setSelectedLicense(e.target.value);
             setUserSelectedLicense(true);
+            setSelectedLicense(e.target.value);
           }}
         >
-          {licenseList.map((url, idx) => (
-            <option key={idx} value={url}>{url}</option>
-          ))}
+          {licenseList.length === 0 ? (
+            <option>No licenses available</option>
+          ) : (
+            licenseList.map((url, index) => (
+              <option key={index} value={url}>{url}</option>
+            ))
+          )}
         </select>
 
-        {/* Challenge Scheme Selector */}
         <label htmlFor="ChallengeScheme" className="w-full text-2xl text-white font-bold mt-4">Challenge Scheme:</label>
         <select
           id="ChallengeScheme"
-          className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2"
+          className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2 shrink-0"
           value={challengeScheme}
           onChange={(e) => setChallengeScheme(e.target.value)}
         >
-          <option value="default">Generic</option>
-          {[...new Set(rules.map((r) => r.scheme).filter(Boolean))].map((scheme, idx) => (
-            <option key={idx} value={scheme}>{scheme}</option>
-          ))}
+          <option value="default">Default</option>
         </select>
 
-        {/* Decrypt Button */}
-        <div className="flex flex-col w-full mt-4 justify-center items-center">
-          <button
-            className="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md mr-2"
-            onClick={handleDecrypt}
-          >
-            Decrypt
-          </button>
-        </div>
-
-        {/* Display License Request Data */}
-        {licenseRequestData && (
-          <div className="mt-4 p-4 bg-gray-800 text-white rounded-md">
-            <h3 className="text-xl font-bold">License Request Data</h3>
-            <pre className='overflow-x-auto'>{JSON.stringify(licenseRequestData, null, 2)}</pre>
-          </div>
-        )}
+        <button
+          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md mt-4"
+          onClick={handleDecrypt}
+        >
+          Decrypt
+        </button>
       </div>
     </div>
   );

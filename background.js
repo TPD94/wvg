@@ -71,39 +71,49 @@
       ["requestBody"]
   );
 
-  // Capture headers and store license URL
-  chrome.webRequest.onBeforeSendHeaders.addListener(
-      (details) => {
-          if (details.method === "POST") {
-              const bodyObj = window.bodys.find((b) => b.id === details.requestId);
-              const body = bodyObj?.body || "";
-
-              window.requests.push({
-                  url: details.url,
-                  headers: convertHeaders(details.requestHeaders),
-                  body,
-              });
-
-              chrome.tabs.get(details.tabId, (tab) => {
-                  const pageUrl = tab?.url || "unknown";
-
-                  chrome.storage.local.get("licenseUrlsByTab", (data) => {
-                      const all = data.licenseUrlsByTab || {};
-                      const currentList = new Set(all[pageUrl] || []);
-                      if (!currentList.has(details.url)) {
-                          currentList.add(details.url);
-                          all[pageUrl] = [...currentList];
-                          chrome.storage.local.set({ licenseUrlsByTab: all });
-                      }
-                  });
-              });
-
-              if (testBlock(details.url)) return { cancel: true };
-          }
-      },
-      { urls: ["<all_urls>"] },
-      ["requestHeaders", "blocking"]
+// Capture headers and store license URL (Modified to capture all URLs)
+chrome.webRequest.onBeforeSendHeaders.addListener(
+    (details) => {
+      if (details.method === "POST") {
+        const bodyObj = window.bodys.find((b) => b.id === details.requestId);
+        const body = bodyObj?.body || "";
+  
+        window.requests.push({
+          url: details.url,
+          headers: convertHeaders(details.requestHeaders),
+          body,
+        });
+  
+        chrome.tabs.get(details.tabId, (tab) => {
+          const pageUrl = tab?.url || "unknown";
+  
+          chrome.storage.local.get("licenseUrlsByTab", (data) => {
+            const all = data.licenseUrlsByTab || {};
+            const currentList = new Set(all[pageUrl] || []);
+            if (!currentList.has(details.url)) {
+              currentList.add(details.url);
+              all[pageUrl] = [...currentList];
+              chrome.storage.local.set({ licenseUrlsByTab: all });
+            }
+          });
+        });
+  
+        if (testBlock(details.url)) return { cancel: true };
+      }
+    },
+    { urls: ["<all_urls>"] },
+    ["requestHeaders", "blocking"]
   );
+  
+  // Send all collected license URLs to the front-end (App.jsx)
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    switch (request.type) {
+      case "GET_ALL_LICENSE_URLS":
+        const licenseUrlsForTab = window.requests.map((req) => req.url);
+        sendResponse(licenseUrlsForTab); // Send all URLs to the front-end
+        break;
+    }
+  });
 
   // Handle messages from content.js
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

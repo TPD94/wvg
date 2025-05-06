@@ -45,10 +45,28 @@ function getPlayReadyPssh(buffer) {
 
 // --- Clearkey extractor ---
 function getClearkey(response) {
-    let obj = JSON.parse((new TextDecoder("utf-8")).decode(response));
-    obj = obj["keys"].map(o => [o["kid"], o["k"]]);
-    obj = obj.map(o => o.map(a => a.replace(/-/g, '+').replace(/_/g, '/') + "=="));
-    return obj.map(o => `${b64ToHexStr(o[0])}:${b64ToHexStr(o[1])}`).join("\n");
+    try {
+        const responseText = new TextDecoder("utf-8").decode(response);
+        
+        // Check if the response is JSON (for Clearkey)
+        if (responseText.trim().startsWith("{") || responseText.trim().startsWith("[")) {
+            let obj = JSON.parse(responseText);
+            obj = obj["keys"].map(o => [o["kid"], o["k"]]);
+            obj = obj.map(o => o.map(a => a.replace(/-/g, '+').replace(/_/g, '/') + "=="));
+            return obj.map(o => `${b64ToHexStr(o[0])}:${b64ToHexStr(o[1])}`).join("\n");
+        } else if (responseText.includes("<soap:Envelope") && responseText.includes("<AcquireLicenseResponse")) {
+            // Handle PlayReady SOAP/XML response
+            console.log("PlayReady XML License Response detected:", responseText);
+            // You can extract specific information here if needed
+            return "[PlayReady XML Response]";  // You can format the response accordingly
+        } else {
+            console.error("Clearkey response is not JSON or PlayReady XML:", responseText);
+            return null;
+        }
+    } catch (e) {
+        console.error("Error parsing Clearkey or PlayReady response:", e);
+        return null;
+    }
 }
 
 // --- Override generateRequest to capture initData (PSSH) ---
@@ -56,17 +74,28 @@ const originalGenerateRequest = MediaKeySession.prototype.generateRequest;
 MediaKeySession.prototype.generateRequest = function(initDataType, initData) {
     const result = originalGenerateRequest.call(this, initDataType, initData);
     try {
-        const pssh = getWidevinePssh(initData) || getPlayReadyPssh(initData);
-        if (pssh) {
+        const widevinePssh = getWidevinePssh(initData);
+        const playreadyPssh = getPlayReadyPssh(initData);
+        
+        if (widevinePssh || playreadyPssh) {
+            const pssh = widevinePssh || playreadyPssh;
             console.log("[PSSH] " + pssh);
             document.dispatchEvent(new CustomEvent('pssh', {
                 detail: pssh
             }));
         } else {
-            console.log("[PSSH] Not found or unsupported format");
+            // If neither Widevine nor PlayReady is detected, process Clearkey
+            console.log("[PSSH] Neither Widevine nor PlayReady detected, checking for Clearkey...");
+            const clearkey = getClearkey(initData);
+            if (clearkey) {
+                console.log("[CLEARKEY] " + clearkey);
+                document.dispatchEvent(new CustomEvent('clearkey', {
+                    detail: clearkey
+                }));
+            }
         }
     } catch (e) {
-        console.error("Error extracting PSSH:", e);
+        console.error("Error extracting PSSH or Clearkey:", e);
     }
     return result;
 };
@@ -77,10 +106,12 @@ MediaKeySession.prototype.update = function(response) {
     const result = originalUpdate.call(this, response);
     try {
         const clearkey = getClearkey(response);
-        console.log("[CLEARKEY] " + clearkey);
-        document.dispatchEvent(new CustomEvent('clearkey', {
-            detail: clearkey
-        }));
+        if (clearkey) {
+            console.log("[CLEARKEY] " + clearkey);
+            document.dispatchEvent(new CustomEvent('clearkey', {
+                detail: clearkey
+            }));
+        }
     } catch (e) {
         console.error("Error extracting Clearkey:", e);
     }

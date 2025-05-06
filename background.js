@@ -1,110 +1,178 @@
 (async () => {
-window.psshs=[];
-window.requests=[];
-window.bodys=[];
-window.targetIds=[];
-window.pageURL="";
-window.clearkey="";
+  // Global state
+  window.psshs = [];
+  window.requests = [];
+  window.bodys = [];
+  window.targetIds = [];
+  window.pageURL = "";
+  window.clearkey = "";
+  window.isBlock = false;
 
-chrome.storage.local.get("isBlock", (value) => {
-    window.isBlock = value.isBlock;
-})
+  // Load block setting
+  chrome.storage.local.get("isBlock", (value) => {
+      window.isBlock = value?.isBlock || false;
+  });
 
-function convertHeaders(obj){
-    return JSON.stringify(Object.fromEntries(obj.map(header => [header.name, header.value])))
-}
+  // Load and parse blockRules.conf
+  try {
+      const blockText = await fetch(chrome.runtime.getURL("blockRules.conf")).then((r) => r.text());
+      window.blockRules = blockText
+          .replace(/\n^\s*$|\s*\/\/.*|\s*$/gm, "")
+          .split("\n")
+          .filter(Boolean);
+  } catch {
+      window.blockRules = [];
+  }
 
-window.blockRules = await fetch("blockRules.conf").then((r)=>r.text());
-window.blockRules = window.blockRules.replace(/\n^\s*$|\s*\/\/.*|\s*$/gm, "").split("\n");
-function testBlock(url) {
-    return window.isBlock && window.blockRules.some(e => url.includes(e));
-}
+  // Load and parse selectRules.conf
+  try {
+      const selectText = await fetch(chrome.runtime.getURL("selectRules.conf")).then((r) => r.text());
+      const selectRules = selectText
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line && !line.startsWith("//"))
+          .map((line) => {
+              const [pattern, scheme] = line.split("$$");
+              return {
+                  pattern,
+                  scheme: scheme || null,
+              };
+          });
 
-//Get URL and headers from POST requests
-chrome.webRequest.onBeforeSendHeaders.addListener(
-    function(details) {
-        if (details.method === "POST") {
-            window.requests.push({
-                url:details.url,
-                headers:convertHeaders(details.requestHeaders),
-                body:window.bodys.find((b) => b.id == details.requestId).body
-            });
-            if(testBlock(details.url)){
-                return {cancel:true}
-            }
-        }
-    },
-    {urls: ["<all_urls>"]},
-    ["requestHeaders", "blocking"]
-);
+      chrome.storage.local.set({ selectRules });
+  } catch (e) {
+      console.error("Failed to load selectRules.conf", e);
+  }
 
-//Get requestBody from POST requests
-chrome.webRequest.onBeforeRequest.addListener(
-    function(details) {
-        if (details.method === "POST") {
-            window.bodys.push({
-                body:details.requestBody.raw ? btoa(String.fromCharCode(...new Uint8Array(details.requestBody.raw[0]['bytes']))) : "",
-                id:details.requestId
-            });
-        }
-    },
-    {urls: ["<all_urls>"]},
-    ["requestBody"]
-);
+  // Utility: check if URL matches any block rule
+  function testBlock(url) {
+      return window.isBlock && window.blockRules.some((rule) => url.includes(rule));
+  }
 
-//Receive PSSH from content.js
-chrome.runtime.onMessage.addListener(
-    function (request, sender, sendResponse) {
-        switch(request.type){
-            case "RESET":
-                location.reload()
-                break;
-            case "PSSH":
-                window.psshs.push(request.text)
-                window.pageURL=sender.tab.url
-                window.targetIds=[sender.tab.id, sender.frameId]
-                break;
-            case "CLEARKEY":
-                window.clearkey=request.text
-                break;
-        }
-    }
-);
-} )()
+  // Convert headers to string
+  function convertHeaders(headers) {
+      return JSON.stringify(Object.fromEntries(headers.map((h) => [h.name, h.value])));
+  }
 
-chrome.browserAction.onClicked.addListener(tab => {
-    if(chrome.windows){
-        chrome.windows.create({
-            url: "popup/main.html",
-            type: "popup",
-            width: 820,
-            height: 600
-        });
-    } else {
-        chrome.tabs.create({url: 'popup/main.html'})
-    }
-});
+  // Capture request body
+  chrome.webRequest.onBeforeRequest.addListener(
+      (details) => {
+          if (details.method === "POST") {
+              const raw = details.requestBody?.raw?.[0]?.bytes;
+              const body = raw ? btoa(String.fromCharCode(...new Uint8Array(raw))) : "";
 
-function createMenu(){
-    chrome.storage.local.set({'isBlock': false}, null);
-    chrome.contextMenus.create({
-        id: "toggleBlocking",
-        title: "Enable License Blocking"
-    });
-}
-chrome.runtime.onInstalled.addListener(createMenu)
-chrome.runtime.onStartup.addListener(createMenu)
+              window.bodys.push({
+                  id: details.requestId,
+                  body,
+              });
+          }
+      },
+      { urls: ["<all_urls>"] },
+      ["requestBody"]
+  );
 
-chrome.contextMenus.onClicked.addListener(item => {
-    if(item.menuItemId == "toggleBlocking"){
-        chrome.storage.local.get("isBlock", (value) => {
-            if(value.isBlock){
-                chrome.storage.local.set({'isBlock': false}, null);
-                chrome.contextMenus.update("toggleBlocking",{title: "Enable License Blocking"})
-            } else {
-                chrome.storage.local.set({'isBlock': true}, null);
-                chrome.contextMenus.update("toggleBlocking",{title: "Disable License Blocking"})
-            }
-        })
-    }
-})
+  // Capture headers and store license URL
+  chrome.webRequest.onBeforeSendHeaders.addListener(
+      (details) => {
+          if (details.method === "POST") {
+              const bodyObj = window.bodys.find((b) => b.id === details.requestId);
+              const body = bodyObj?.body || "";
+
+              window.requests.push({
+                  url: details.url,
+                  headers: convertHeaders(details.requestHeaders),
+                  body,
+              });
+
+              chrome.tabs.get(details.tabId, (tab) => {
+                  const pageUrl = tab?.url || "unknown";
+
+                  chrome.storage.local.get("licenseUrlsByTab", (data) => {
+                      const all = data.licenseUrlsByTab || {};
+                      const currentList = new Set(all[pageUrl] || []);
+                      if (!currentList.has(details.url)) {
+                          currentList.add(details.url);
+                          all[pageUrl] = [...currentList];
+                          chrome.storage.local.set({ licenseUrlsByTab: all });
+                      }
+                  });
+              });
+
+              if (testBlock(details.url)) return { cancel: true };
+          }
+      },
+      { urls: ["<all_urls>"] },
+      ["requestHeaders", "blocking"]
+  );
+
+  // Handle messages from content.js
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      switch (request.type) {
+          case "RESET":
+              chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                  const tab = tabs[0];
+                  const pageURL = tab?.url || "unknown";
+                  window.pageURL = pageURL;
+                  chrome.storage.local.set({
+                      pageURL,
+                      licenseUrlsByTab: { [pageURL]: [] }
+                  });
+              });
+              break;
+
+          case "PSSH":
+              window.psshs.push(request.text);
+              window.pageURL = sender.tab?.url || "";
+              window.targetIds = [sender.tab?.id, sender.frameId];
+              chrome.storage.local.set({ psshs: window.psshs });
+              break;
+
+          case "CLEARKEY":
+              window.clearkey = request.text;
+              break;
+
+          case "GET_LICENSE_REQUEST":
+              // Find the request matching the selected URL
+              const licenseRequest = window.requests.find((r) => r.url === request.url);
+              sendResponse(licenseRequest); // Send it back to the sender
+              break;
+      }
+  });
+
+  // Handle browser action click
+  chrome.browserAction.onClicked.addListener(() => {
+      chrome.windows
+          ? chrome.windows.create({
+              url: "index.html",
+              type: "popup",
+              width: 820,
+              height: 600,
+          })
+          : chrome.tabs.create({ url: "index.html" });
+  });
+
+  // Create context menu for license blocking
+  function createMenu() {
+      chrome.storage.local.set({ isBlock: false }, null);
+      chrome.contextMenus.create({
+          id: "toggleBlocking",
+          title: "Enable License Blocking",
+      });
+  }
+
+  chrome.runtime.onInstalled.addListener(createMenu);
+  chrome.runtime.onStartup.addListener(createMenu);
+
+  // Toggle blocking from context menu
+  chrome.contextMenus.onClicked.addListener((item) => {
+      if (item.menuItemId === "toggleBlocking") {
+          chrome.storage.local.get("isBlock", (value) => {
+              const newState = !value?.isBlock;
+              chrome.storage.local.set({ isBlock: newState });
+              chrome.contextMenus.update("toggleBlocking", {
+                  title: newState ? "Disable License Blocking" : "Enable License Blocking",
+              });
+          });
+      }
+  });
+})();

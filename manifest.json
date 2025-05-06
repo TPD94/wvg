@@ -1,35 +1,42 @@
 {
-    "manifest_version": 2,
-    "name": "Widevine L3 Decrypter",
-    "version": "241029.1",
-    "version_name": "4316530",
-    "icons": {
-        "128": "icon.png"
-    },
-    "permissions": [
-        "webRequest",
-        "webRequestBlocking",
-        "<all_urls>",
-        "activeTab",
-        "storage",
-        "tabs",
-        "contextMenus"
-    ],
-    "background": {
-        "scripts": ["background.js"],
-        "persistent": true
-    },
-    "content_scripts": [
-        {
-            "run_at":"document_start",
-            "matches":["<all_urls>"],
-            "js": ["content.js"],
-            "all_frames": true
-        }
-    ],
-    "browser_action": {
-        "default_title": "Widevine Decrypter"
-    },
-    "web_accessible_resources": ["inject.js"],
-    "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'"
+  "manifest_version": 2,
+  "name": "CDRM Extension",
+  "version": "1.0",
+  "icons": {
+    "128": "icon.png"
+  },
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "<all_urls>",
+    "activeTab",
+    "storage",
+    "tabs",
+    "contextMenus"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "run_at": "document_start",
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true
+    }
+  ],
+  "browser_action": {
+    "default_title": "CDRM Extension"
+  },
+  "web_accessible_resources": [
+    "pyodide/pyodide.js",
+    "pyodide/pyodide.asm.js",
+    "pyodide/pyodide.asm.wasm",
+    "inject.js",
+    "remote.json",
+    "python/packages/pywidevine.whl",
+    "python/packages/pyplayready.whl"
+  ],
+  "content_security_policy": "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; object-src 'self';"
 }

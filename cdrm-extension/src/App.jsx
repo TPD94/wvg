@@ -1,22 +1,22 @@
-import { useEffect, useState } from 'react';
-import Results from './Results';
+import { useEffect, useState } from "react";
+import Results from "./Results";
 
 function App() {
-  const [pssh, setPssh] = useState('');
-  const [selectedPssh, setSelectedPssh] = useState('');
+  const [pssh, setPssh] = useState("");
+  const [selectedPssh, setSelectedPssh] = useState("");
   const [licenseList, setLicenseList] = useState([]);
-  const [selectedLicense, setSelectedLicense] = useState('');
-  const [challengeScheme, setChallengeScheme] = useState('default');
+  const [selectedLicense, setSelectedLicense] = useState("");
+  const [challengeScheme, setChallengeScheme] = useState("default");
   const [rules, setRules] = useState([]);
   const [userSelectedLicense, setUserSelectedLicense] = useState(false);
   const [licenseRequestData, setLicenseRequestData] = useState(null);
   const [pyodide, setPyodide] = useState(null);
   const [isPyodideLoaded, setIsPyodideLoaded] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [decryptionResult, setDecryptionResult] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [decryptionResult, setDecryptionResult] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [devices, setDevices] = useState([]);
-  const [selectedDevice, setSelectedDevice] = useState('CDRM Instance default');
+  const [selectedDevice, setSelectedDevice] = useState("CDRM Instance default");
 
   const autoSelectLicense = (licenseUrls, ruleSet) => {
     let foundMatch = false;
@@ -25,8 +25,9 @@ function App() {
         const cleanPattern = rule.pattern;
         const scheme = rule.scheme;
         if (url.includes(cleanPattern)) {
+          console.log(scheme);
           setSelectedLicense(url);
-          setChallengeScheme(scheme || 'default');
+          setChallengeScheme(scheme || "default");
           foundMatch = true;
           break;
         }
@@ -35,7 +36,7 @@ function App() {
     }
     if (!foundMatch && licenseUrls.length > 0) {
       setSelectedLicense(licenseUrls[0]);
-      setChallengeScheme('default');
+      setChallengeScheme("default");
     }
   };
 
@@ -47,22 +48,42 @@ function App() {
         setIsPyodideLoaded(true);
 
         await py.loadPackage([
-          chrome.runtime.getURL('python/packages/pyplayready-0.6.0-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/pywidevine-1.8.0-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/xmltodict-0.14.2-py2.py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/pycryptodome-3.20.0-cp35-abi3-emscripten_3_1_52_wasm32.whl'),
-          chrome.runtime.getURL('python/packages/ECPy-1.2.5-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/construct-2.8.8-py2.py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/requests-2.31.0-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/urllib3-2.2.1-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/pymp4-1.4.0-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/protobuf-4.24.4-cp312-cp312-emscripten_3_1_52_wasm32.whl'),
-          chrome.runtime.getURL('python/packages/charset_normalizer-3.3.2-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/certifi-2024.2.2-py3-none-any.whl'),
-          chrome.runtime.getURL('python/packages/idna-3.6-py3-none-any.whl'),
+          chrome.runtime.getURL(
+            "python/packages/pyplayready-0.6.0-py3-none-any.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/pywidevine-1.8.0-py3-none-any.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/xmltodict-0.14.2-py2.py3-none-any.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/pycryptodome-3.20.0-cp35-abi3-emscripten_3_1_52_wasm32.whl"
+          ),
+          chrome.runtime.getURL("python/packages/ECPy-1.2.5-py3-none-any.whl"),
+          chrome.runtime.getURL(
+            "python/packages/construct-2.8.8-py2.py3-none-any.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/requests-2.31.0-py3-none-any.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/urllib3-2.2.1-py3-none-any.whl"
+          ),
+          chrome.runtime.getURL("python/packages/pymp4-1.4.0-py3-none-any.whl"),
+          chrome.runtime.getURL(
+            "python/packages/protobuf-4.24.4-cp312-cp312-emscripten_3_1_52_wasm32.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/charset_normalizer-3.3.2-py3-none-any.whl"
+          ),
+          chrome.runtime.getURL(
+            "python/packages/certifi-2024.2.2-py3-none-any.whl"
+          ),
+          chrome.runtime.getURL("python/packages/idna-3.6-py3-none-any.whl"),
         ]);
       } catch (error) {
-        console.error('Error loading Pyodide or packages:', error);
+        console.error("Error loading Pyodide or packages:", error);
         setIsPyodideLoaded(false);
       }
     };
@@ -71,7 +92,18 @@ function App() {
   }, []);
 
   useEffect(() => {
-    chrome.storage.local.get(['apiKey'], (data) => {
+    chrome.storage.local.get(["clearkey"], (data) => {
+      if (data.clearkey) {
+        console.log(data.clearkey);
+        setDecryptionResult(data.clearkey);
+        setShowResults(true);
+        chrome.storage.local.remove("clearkey");
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    chrome.storage.local.get(["apiKey"], (data) => {
       if (data.apiKey) {
         setApiKey(data.apiKey);
       }
@@ -79,19 +111,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    chrome.storage.local.get(['psshs', 'selectRules', 'licenseUrlsByTab', 'pageURL'], (data) => {
-      if (data.psshs && data.psshs.length > 0) {
-        setPssh(data.psshs[0]);
-        setSelectedPssh(data.psshs[0]);
+    chrome.storage.local.get(
+      ["psshs", "selectRules", "licenseUrlsByTab", "pageURL"],
+      (data) => {
+        if (data.psshs && data.psshs.length > 0) {
+          setPssh(data.psshs[0]);
+          setSelectedPssh(data.psshs[0]);
+        }
+        if (data.selectRules) {
+          setRules(data.selectRules);
+        }
+        if (data.pageURL) {
+          const urlsForThisPage =
+            (data.licenseUrlsByTab || {})[data.pageURL] || [];
+          setLicenseList(urlsForThisPage);
+        }
       }
-      if (data.selectRules) {
-        setRules(data.selectRules);
-      }
-      if (data.pageURL) {
-        const urlsForThisPage = (data.licenseUrlsByTab || {})[data.pageURL] || [];
-        setLicenseList(urlsForThisPage);
-      }
-    });
+    );
 
     chrome.storage.onChanged.addListener((changes) => {
       if (changes.psshs) {
@@ -102,7 +138,7 @@ function App() {
         }
       }
       if (changes.licenseUrlsByTab || changes.pageURL) {
-        chrome.storage.local.get(['licenseUrlsByTab', 'pageURL'], (data) => {
+        chrome.storage.local.get(["licenseUrlsByTab", "pageURL"], (data) => {
           const urls = (data.licenseUrlsByTab || {})[data.pageURL] || [];
           setLicenseList(urls);
           if (urls.length === 0) setUserSelectedLicense(false);
@@ -125,15 +161,15 @@ function App() {
       if (!apiKey) return;
 
       try {
-        const fqdnResponse = await fetch(chrome.runtime.getURL('remote.json'));
+        const fqdnResponse = await fetch(chrome.runtime.getURL("remote.json"));
         const fqdnData = await fqdnResponse.json();
         const fqdn = fqdnData.cdrm_instance_fqdn;
 
         const response = await fetch(`${fqdn}userinfo`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'API-Key': apiKey,
+            "Content-Type": "application/json",
+            "API-Key": apiKey,
           },
         });
 
@@ -145,12 +181,15 @@ function App() {
         const data = await response.json();
         const devicesList = [
           { name: "CDRM Instance default", type: "Default" },
-          ...data.Playready_Devices.map(name => ({ type: 'PlayReady', name })),
-          ...data.Widevine_Devices.map(name => ({ type: 'Widevine', name })),
+          ...data.Playready_Devices.map((name) => ({
+            type: "PlayReady",
+            name,
+          })),
+          ...data.Widevine_Devices.map((name) => ({ type: "Widevine", name })),
         ];
         setDevices(devicesList);
       } catch (err) {
-        console.error('Error fetching user info:', err);
+        console.error("Error fetching user info:", err);
       }
     };
 
@@ -159,12 +198,12 @@ function App() {
 
   const handleDecrypt = async () => {
     if (!selectedLicense || !pyodide) {
-      console.error('Pyodide is not loaded or license is missing');
+      console.error("Pyodide is not loaded or license is missing");
       return;
     }
 
     chrome.runtime.sendMessage(
-      { type: 'GET_LICENSE_REQUEST', url: selectedLicense },
+      { type: "GET_LICENSE_REQUEST", url: selectedLicense },
       async (response) => {
         if (response) {
           setLicenseRequestData(response);
@@ -179,43 +218,49 @@ function App() {
           };
 
           try {
-            const fqdnResponse = await fetch(chrome.runtime.getURL('remote.json'));
+            const fqdnResponse = await fetch(
+              chrome.runtime.getURL("remote.json")
+            );
             const fqdnData = await fqdnResponse.json();
-            const cdrmInstanceFqdn = fqdnData.cdrm_instance_fqdn || '';
+            const cdrmInstanceFqdn = fqdnData.cdrm_instance_fqdn || "";
 
-            pyodide.globals.set('pssh', payload.pssh);
-            pyodide.globals.set('license_url', payload.licenseUrl);
-            pyodide.globals.set('license_body', payload.body);
-            pyodide.globals.set('headers', payload.headers);
-            pyodide.globals.set('scheme', payload.challengeScheme);
-            pyodide.globals.set('cdrm_instance_fqdn', cdrmInstanceFqdn);
-            pyodide.globals.set('selected_device', selectedDevice);
-            const deviceObj = devices.find(d => d.name === selectedDevice) || { type: 'Default' };
-            pyodide.globals.set('device_type', deviceObj.type);
-            pyodide.globals.set('api_key', apiKey || '');
+            pyodide.globals.set("pssh", payload.pssh);
+            pyodide.globals.set("license_url", payload.licenseUrl);
+            pyodide.globals.set("license_body", payload.body);
+            pyodide.globals.set("headers", payload.headers);
+            pyodide.globals.set("scheme", payload.challengeScheme);
+            pyodide.globals.set("cdrm_instance_fqdn", cdrmInstanceFqdn);
+            pyodide.globals.set("selected_device", selectedDevice);
+            const deviceObj = devices.find(
+              (d) => d.name === selectedDevice
+            ) || { type: "Default" };
+            pyodide.globals.set("device_type", deviceObj.type);
+            pyodide.globals.set("api_key", apiKey || "");
 
             const fetchScript = async (scriptPath) => {
               const response = await fetch(chrome.runtime.getURL(scriptPath));
               return await response.text();
             };
 
-            const preScript = await fetchScript('python/pre.py');
+            const preScript = await fetchScript("python/pre.py");
             await pyodide.runPythonAsync(preScript);
 
-            const schemeScript = await fetchScript(`python/schemes/${challengeScheme}.py`);
+            const schemeScript = await fetchScript(
+              `python/schemes/${challengeScheme}.py`
+            );
             await pyodide.runPythonAsync(schemeScript);
 
-            const postScript = await fetchScript('python/post.py');
+            const postScript = await fetchScript("python/post.py");
             await pyodide.runPythonAsync(postScript);
 
-            const finalResult = pyodide.globals.get('r_keys');
+            const finalResult = pyodide.globals.get("r_keys");
             setDecryptionResult(finalResult);
             setShowResults(true);
           } catch (error) {
-            console.error('Error during decryption:', error);
+            console.error("Error during decryption:", error);
           }
         } else {
-          console.error('No data returned for the selected license URL');
+          console.error("No data returned for the selected license URL");
         }
       }
     );
@@ -244,7 +289,7 @@ function App() {
           className="bg-green-600 hover:bg-green-700 text-white font-bold p-4 rounded-2xl mr-2"
           onClick={() => {
             chrome.storage.local.set({ apiKey }, () => {
-              console.log('API key saved:', apiKey);
+              console.log("API key saved:", apiKey);
             });
           }}
         >
@@ -259,7 +304,9 @@ function App() {
           </p>
         )}
 
-        <label htmlFor="pssh" className="text-2xl text-white font-bold">PSSH:</label>
+        <label htmlFor="pssh" className="text-2xl text-white font-bold">
+          PSSH:
+        </label>
         <select
           id="pssh"
           className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2"
@@ -269,7 +316,9 @@ function App() {
           <option value={pssh}>{pssh}</option>
         </select>
 
-        <label htmlFor="license" className="text-2xl text-white font-bold mt-4">License URL:</label>
+        <label htmlFor="license" className="text-2xl text-white font-bold mt-4">
+          License URL:
+        </label>
         <select
           id="license"
           className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2"
@@ -283,12 +332,19 @@ function App() {
             <option>No licenses available</option>
           ) : (
             licenseList.map((url, index) => (
-              <option key={index} value={url}>{url}</option>
+              <option key={index} value={url}>
+                {url}
+              </option>
             ))
           )}
         </select>
 
-        <label htmlFor="ChallengeScheme" className="text-2xl text-white font-bold mt-4">Challenge Scheme:</label>
+        <label
+          htmlFor="ChallengeScheme"
+          className="text-2xl text-white font-bold mt-4"
+        >
+          Challenge Scheme:
+        </label>
         <select
           id="ChallengeScheme"
           className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2"
@@ -296,11 +352,22 @@ function App() {
           onChange={(e) => setChallengeScheme(e.target.value)}
         >
           <option value="default">Default</option>
+          {challengeScheme !== "default" && (
+            <option value={challengeScheme}>
+              {challengeScheme.charAt(0).toUpperCase() +
+                challengeScheme.slice(1)}
+            </option>
+          )}
         </select>
 
         {apiKey && devices.length > 0 && (
           <>
-            <label htmlFor="Device" className="text-2xl text-white font-bold mt-4">Device:</label>
+            <label
+              htmlFor="Device"
+              className="text-2xl text-white font-bold mt-4"
+            >
+              Device:
+            </label>
             <select
               id="Device"
               className="w-full bg-black/35 h-10 mt-1 rounded-md border-2 border-black/20 text-white p-2"
@@ -325,7 +392,10 @@ function App() {
       </div>
 
       {showResults && (
-        <Results onCloseComplete={() => setShowResults(false)} result={decryptionResult} />
+        <Results
+          onCloseComplete={() => setShowResults(false)}
+          result={decryptionResult}
+        />
       )}
     </div>
   );

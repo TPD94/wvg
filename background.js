@@ -68,7 +68,6 @@ try {
 
         });
 
-
     chrome.storage.local.set({ selectRules });
 
 } catch (e) {
@@ -173,6 +172,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
           case "CLEARKEY":
               window.clearkey = request.text;
+              chrome.storage.local.set({ clearkey: request.text });
               break;
 
           case "GET_LICENSE_REQUEST":

@@ -24,25 +24,59 @@
       window.blockRules = [];
   }
 
-  // Load and parse selectRules.conf
-  try {
-      const selectText = await fetch(chrome.runtime.getURL("selectRules.conf")).then((r) => r.text());
-      const selectRules = selectText
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line && !line.startsWith("//"))
-          .map((line) => {
-              const [pattern, scheme] = line.split("$$");
-              return {
-                  pattern,
-                  scheme: scheme || null,
-              };
-          });
 
-      chrome.storage.local.set({ selectRules });
-  } catch (e) {
-      console.error("Failed to load selectRules.conf", e);
-  }
+
+// Load and parse selectRules.conf
+
+try {
+
+    const selectText = await fetch(chrome.runtime.getURL("selectRules.conf")).then((r) => r.text());
+
+    const selectRules = selectText
+
+        .split("\n")
+
+        .map((line) => line.trim())
+
+        .filter((line) => line && !line.startsWith("//"))
+
+        .map((line) => {
+
+            if (line.includes("$$")) {
+
+                const [pattern, scheme] = line.split("$$");
+
+                return {
+
+                    pattern: pattern.trim(),
+
+                    scheme: scheme.trim() || "default",
+
+                };
+
+            } else {
+
+                return {
+
+                    pattern: line,
+
+                    scheme: "default",
+
+                };
+
+            }
+
+        });
+
+
+    chrome.storage.local.set({ selectRules });
+
+} catch (e) {
+
+    console.error("Failed to load selectRules.conf", e);
+
+}
+
 
   // Utility: check if URL matches any block rule
   function testBlock(url) {

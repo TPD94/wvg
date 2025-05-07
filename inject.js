@@ -46,8 +46,15 @@ function getPlayReadyPssh(buffer) {
 // --- Clearkey extractor ---
 function getClearkey(response) {
     try {
-        const responseText = new TextDecoder("utf-8").decode(response);
-        
+        // Attempt to decode response to a string (assuming UTF-8)
+        let responseText;
+        try {
+            responseText = new TextDecoder("utf-8").decode(response);
+        } catch (e) {
+            console.error("Error decoding response to UTF-8:", e);
+            return null;  // If decoding fails, return null
+        }
+
         // Check if the response is JSON (for Clearkey)
         if (responseText.trim().startsWith("{") || responseText.trim().startsWith("[")) {
             let obj = JSON.parse(responseText);
@@ -57,10 +64,9 @@ function getClearkey(response) {
         } else if (responseText.includes("<soap:Envelope") && responseText.includes("<AcquireLicenseResponse")) {
             // Handle PlayReady SOAP/XML response
             console.log("PlayReady XML License Response detected:", responseText);
-            // You can extract specific information here if needed
             return "[PlayReady XML Response]";  // You can format the response accordingly
         } else {
-            console.error("Clearkey response is not JSON or PlayReady XML:", responseText);
+            // If it's not Clearkey or PlayReady, log the response and return null
             return null;
         }
     } catch (e) {
@@ -68,6 +74,7 @@ function getClearkey(response) {
         return null;
     }
 }
+
 
 // --- Override generateRequest to capture initData (PSSH) ---
 const originalGenerateRequest = MediaKeySession.prototype.generateRequest;
